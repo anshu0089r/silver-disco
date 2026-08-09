@@ -2,7 +2,7 @@ from fastapi import FastAPI ,Path, HTTPException,Query
 from fastapi.responses import JSONResponse
 import json
 from pydantic import BaseModel ,Field,computed_field
-from typing import Annotated,Literal
+from typing import Annotated,Literal,Optional
 
 app= FastAPI()
 
@@ -34,7 +34,13 @@ class Patient(BaseModel):
             return "obese"
 
         
-
+class PatientUpdate(BaseModel):
+    name: Annotated[Optional[str], Field(default=None, description='Name of the patient')]
+    city: Annotated[Optional[str], Field(default=None, description='City of the patient where he is living')]
+    age: Annotated[Optional[int], Field(default=None, gt=0, lt=100, description="Age of the patient")]
+    gender: Annotated[Optional[Literal['male','female','others']], Field(default=None, description='Gender of the patient ')]
+    height: Annotated[Optional[float], Field(default=None, gt=0, description='Height of the patient in mtrs')]
+    weight: Annotated[Optional[float], Field(default=None, gt=0, description='weight of the patient in kgs')]
 
 def load_data():
     with open('patients.json','r') as f:
@@ -103,3 +109,50 @@ def create_patient(patient:Patient):
     save_data(data)
 
     return JSONResponse(status_code=201,content={'message':'patient created sucessfully'})
+
+@app.put('/edit/{patient_id}')
+def update_patient(patient_id:str,patient_update:PatientUpdate):
+
+    data=load_data()
+
+    if patient_id not in data:
+        raise HTTPException(status_code=404,detail='Patient not found')
+
+    #update the patient data
+    existing_patient_info = data[patient_id]
+
+    updated_patient_info = patient_update.model_dump(exclude_unset=True)
+
+    for key ,value in updated_patient_info.items():
+        existing_patient_info[key]=value
+    
+    #existing_patient_info -> pydantic object -> updated bmi +verdict
+    existing_patient_info['id']=patient_id
+    
+    patient_pydantic_obj = Patient(**existing_patient_info)
+
+
+    #-> pydantic object -> dict
+    existing_patient_info = patient_pydantic_obj.model_dump(exclude='id')
+
+    data[patient_id]=existing_patient_info
+
+    # Save the updated data back to the JSON file
+    save_data(data)
+
+    return JSONResponse(status_code=200, content={'message': 'Patient updated successfully'})
+
+@app.delete('/delete/{patient_id}')
+def delete_patient(patient_id:str):
+    data=load_data()
+
+    if patient_id not in data:
+        raise HTTPException(status_code=404,detail='Patient not found')
+
+    #delete the patient from the database
+    del data[patient_id]
+
+    #save the updated data back to the JSON file
+    save_data(data)
+
+    return JSONResponse(status_code=200,content={'message':'Patient deleted successfully'})
